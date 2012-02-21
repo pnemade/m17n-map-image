@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: m17n-map-image
+Version: 0.5
+Summary: This program will show m17n keymap in keyboard UI
+Home-page: 
+Author: Parag Nemade
+Author-email: pnemade@redhat.com
+License: http://www.gnu.org/licenses/gpl.html
+Description: This program will show m17n keymap in keyboard UI.
+Platform: Linux

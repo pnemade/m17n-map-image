@@ -1,0 +1,292 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+
+import pygtk
+pygtk.require("2.0")
+import gtk
+import gtk.glade
+import gobject
+
+import re
+import os.path
+import glob
+import sys
+
+mlist = []
+extmlist = []
+cnt = 0
+extcnt = 0
+
+# class to parse a .mim file ("7" "A") or ("7" ?A)
+class MimParser2:
+	def __init__(self, filename):
+		self.filename = filename
+		self.mappings = {}
+		self.ext_mappings = {}
+	
+	def get_mappings(self):
+		lines = open(self.filename, "r").readlines()
+	
+		#make sure no elements exists so that we can fill newly mappings.	
+		no = 0
+		for item in mlist:
+			no = no+1
+		while no > 0:
+			mlist.pop()
+			no = no-1
+		
+		reobj = re.compile('\(".*"')
+		for line in lines:
+                        line = line.strip()
+			if reobj.match(line):
+				if len(line) > 30:
+                                   line_no_braces = line[1:len(line)-33]
+                                else:
+                                    line_no_braces = line[1:len(line)-1]
+				try:
+					[key, value] = self.parse_line(line_no_braces)
+				except TypeError:
+					  print line
+                 			  dtext = "TypeError: This Keymap is not compatible with mapper application"
+		                          dialog = gtk.MessageDialog()
+                		          ok_button = dialog.add_button(gtk.STOCK_OK, gtk.RESPONSE_OK)
+		                          dialog.set_markup(dtext)
+                		          response = dialog.run()
+		                          dialog.hide()
+   					  return self.mappings
+ 
+				if value.find("delet") != 0:
+					self.mappings[key] = value
+					mlist.append(key)
+					mlist.append(value)
+
+		return self.mappings
+
+
+	def get_ext_mappings(self):
+                extlines = open(self.filename, "r").readlines()
+
+                #make sure no elements exists so that we can fill newly mappings.       
+		no = 0
+                for item in extmlist:
+                        no = no+1
+                while no > 0:
+                        extmlist.pop()
+                        no = no-1
+
+                extreobj = re.compile('\(\(G-.*')
+                for line in extlines:
+                        line = line.strip()
+			if extreobj.match(line):
+                                if len(line) > 30:
+                                   extline_no_braces = line[1:len(line)-33]
+                                else:
+                                    extline_no_braces = line[1:len(line)-1]
+                                try:
+                                        [ext_key, ext_value] = self.parse_line(extline_no_braces)
+                                except TypeError:
+                                          print line
+                                          dtext = "TypeError: This Keymap is not compatible with mapper application"
+                                          dialog = gtk.MessageDialog()
+                                          ok_button = dialog.add_button(gtk.STOCK_OK, gtk.RESPONSE_OK)
+                                          dialog.set_markup(dtext)
+                                          response = dialog.run()
+                                          dialog.hide()
+                                          return self.ext_mappings
+
+				if ext_value.find("delet") != 0:
+                                        self.ext_mappings[ext_key] = ext_value
+                                        extmlist.append(ext_key)
+                                        extmlist.append(ext_value)
+                return self.ext_mappings
+		
+	# "a" "b"
+	# "a" ?b
+        # "\a" ?b
+	def parse_line(self, line):
+		key_value = line.split(" ")
+		try:
+			key = self.parse(key_value[0])
+			if key.find("\\") == 0:
+                	   key=key[1:]
+			if key.find("G-") == 0:
+			   key=key[2:]
+			value = self.parse(key_value[1])
+			if value.find("\\") == 0:
+	        	   value=value[1:]
+	        	if value.find("\")") > 0 or value.find("\"") > 0:
+        	           value=value[:value.find("\")")]
+		        if value.find(")") > 0 or value.find("))") > 0:
+	       		   value=value[:value.find(")")]
+       			if value.find("‌") == 0:
+			   value="ZWNJ" 		
+			if value.find("‍") == 0:
+                           value="ZWJ"
+			return [key, value]
+		except IndexError:
+		        return
+				
+	
+	# "a"
+	# ?a
+	def parse(self, text):
+		if text[0] == "?":
+			return text[1:]
+		else:
+			return text[1:len(text)-1]
+
+
+
+
+# class handling the GUI of Mapper
+class MapperGUI:
+
+	def __init__(self, glade_file,mimfile):
+		self.mim_parser = None
+		self.mappings = None
+		self.ext_mappings = None
+		if mimfile == "":
+			self.selected_mim_file = "English"
+		else:
+			self.selected_mim_file = mimfile
+
+		self.glade_file = glade_file
+		self.window_name = "m17n-map-image"
+		self.tree_view_name = "tv_other_mappings"
+		self.orig_labels = []
+		self.keymaps_directory = "/usr/share/m17n/"
+		self.mim_extension = "*.mim"
+		self.spkey = -1
+
+		self.wTree = gtk.glade.XML(self.glade_file, self.window_name)
+		self.window = self.wTree.get_widget(self.window_name)
+		self.orig_window_title = self.window.get_title()
+		self.window.set_focus_on_map(False)		
+		self.connect_callbacks()
+		
+		# save a list of original labels, will be usefull when unloading a keymap
+		self.orig_labels_dict = self.get_existing_ui_mappings(self.wTree)
+
+		if mimfile != "":
+                	self.mim_parser = MimParser2(self.keymaps_directory + self.selected_mim_file + ".mim")
+	                self.mappings = self.mim_parser.get_mappings()
+                        self.ext_mappings = self.mim_parser.get_ext_mappings()
+
+		# show the main window
+		self.window.show()
+                if mimfile != "":
+			self.load_mappings_into_ui()
+		        self.window.set_title("Mapper - Key mappings for /usr/share/m17n/" + mimfile + ".mim")
+
+	
+	# connect callbacks to the widgets
+	def connect_callbacks(self):
+		# callback to destroy the window
+		self.window.connect("destroy", gtk.main_quit)	
+
+                self.wTree.get_widget("bt_altgr").connect("clicked", self.on_bt_altgr_clicked)
+
+	# should return a dict like {widget:widget_label}
+	def get_existing_ui_mappings(self, wTree):
+		widget_dict = {}
+		for widget in wTree.get_widget_prefix(""):
+			if type(widget) == type(gtk.Button(label=None)):
+				widget_dict[widget] = widget.get_label()	
+		return widget_dict
+	
+	
+	# loads new label mappings into the UI
+	# or resets them to the original labels as per clear_mappings flag
+	def load_mappings_into_ui(self, ext_mappings=False, clear_mappings=False):
+		for widget in self.wTree.get_widget_prefix(""):
+			if type(widget) == type(gtk.Button(label=None)):
+				if clear_mappings == False:
+						self.load_mapping_into_widget(widget)
+				else:
+					self.load_mapping_into_widget(widget, self.orig_labels_dict[widget])
+					if ext_mappings == True:
+						self.load_ext_mapping_into_widget(widget)
+			
+	
+	# loads the mappings into buttons.
+	# split at \n, add the mapping after space - do it for both normal & caps char.
+	def load_mapping_into_widget(self, widget, original_mapping=None):
+		if original_mapping == None:
+			text = self.orig_labels_dict[widget].split("\n")
+			new_label = text[0] + "  "
+			if len(text) > 1:
+				if self.mappings.has_key(text[0]):
+					new_label += self.mappings[text[0]]
+				else:
+					new_label += text[0]
+				
+				new_label += "\n" + text[1] + "  "
+				
+				if self.mappings.has_key(text[1]):
+					new_label += self.mappings[text[1]]
+                             	else:
+					new_label += text[1]
+				
+				widget.set_label(new_label)
+		else:
+			widget.set_label(original_mapping)
+
+	# loads the ext mappings into buttons.
+        # split at \n, add the mapping after space - do it for both normal & caps char.
+        def load_ext_mapping_into_widget(self, widget, original_mapping=None):
+                if original_mapping == None:
+                        text = self.orig_labels_dict[widget].split("\n")
+                        new_label = text[0] + "  "
+                        if len(text) > 1:
+                                if self.ext_mappings.has_key(text[0]):
+                                        new_label += self.ext_mappings[text[0]]
+                                else:
+                                        new_label += text[0]
+
+                                new_label += "\n" + text[1] + "  "
+
+                                if self.ext_mappings.has_key(text[1]):
+                                        new_label += self.ext_mappings[text[1]]
+                                else:
+                                        new_label += text[1]
+
+                                widget.set_label(new_label)
+                else:
+                        widget.set_label(original_mapping)
+	
+	# general utility func...
+	def show_dialog(self, message, style="info"):
+		dialog = gtk.MessageDialog(self.window, gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, \
+                                                gtk.BUTTONS_OK, "")
+                dialog.set_markup("Please Remove this keymap first")
+                response = dialog.run()
+                dialog.hide()
+
+
+	def on_bt_altgr_clicked(self, button):
+	#load the altgr mapping
+		 if button.get_active() == True :
+	                self.load_mappings_into_ui(True,True)
+                 else:
+                        self.load_mappings_into_ui(False,False)
+
+	
+
+if __name__ == "__main__":
+	if sys.argv[1:] :
+		if sys.argv[1] == "-h" or sys.argv[1] == "--help":
+			print "m17n-map-image.py keymap_name (without .mim)"
+			print "-h   --help            print help"
+			print "-V   --version         print version"
+			exit(0)
+		if sys.argv[1] == "-v" or sys.argv[1] == "--version" :
+	                print "m17n-map-image script version 0.5"
+        	        exit(0)
+		if sys.argv[1] != "-h" or sys.argv[1] != "--help":
+				mapper = MapperGUI("m17n-map-image.glade", sys.argv[1])
+	else:
+		print "No keymap provided as an input"
+		print "Usage=> m17n-map-image keymap_name (without .mim)"
+		exit(0)
+
+	gtk.main()

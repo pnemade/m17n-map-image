@@ -1,0 +1,24 @@
+
+Introduction
+-----------------------------------------------------------------------
+ This is a m17n keymap viewer written in python. This program will
+show m17n keymap in a keyboard GUI. Users can easily see which key is
+mapped to which character. This program also supports keymaps written
+for AltGr mappings. The only drawback of this program is that it will
+show only single 1:1 pair mapping keymap in a GUI.
+
+
+LICESNE
+-----------------------------------------------------------------------
+See the COPYING file.
+
+INSTALL
+----------------------------------------------------------------------
+python setup.py build
+python setup.py install
+
+AUTHORS
+----------------------------------------------------------------------
+Mayank Jain <mayank.gnu@gmail.com>
+Parag Nemade <pnemade@redhat.com>
+
