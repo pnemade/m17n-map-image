@@ -13,6 +13,6 @@ setup(name='m17n-map-image',
       url='',
       license = 'http://www.gnu.org/licenses/gpl.html',
       data_files=[('/usr/bin',['m17n-map-image']),
-		  ('/usr/share/m17n-map-image-0.5/',['m17n-map-image.glade'])]
+		  ('/usr/share/m17n-map-image/',['m17n-map-image.glade'])]
       )
 
